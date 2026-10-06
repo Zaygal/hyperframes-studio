@@ -66,7 +66,13 @@ jobs:
       - name: what got installed
         run: |
           echo "hyperframes $(hyperframes --version)"
-          node -e "console.log('studio', require('@hyperframes/studio/package.json').version)"
+          # A global install is NOT on the resolution path for `node -e`, so requiring
+          # the package by name fails even though it installed fine. Resolve the
+          # global root and read it from there.
+          GROOT="$(npm root -g)"
+          echo "global root: $GROOT"
+          node -e "console.log('studio', require(process.argv[1] + '/@hyperframes/studio/package.json').version)" "$GROOT"
+          npm ls -g --depth=0 2>&1 | grep -i hyperframe || true
 
       - name: doctor
         run: hyperframes doctor
