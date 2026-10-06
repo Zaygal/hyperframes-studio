@@ -82,7 +82,11 @@ jobs:
           # Stops init reaching out to GitHub for the agent skills in CI.
           HYPERFRAMES_SKIP_SKILLS: '1'
         run: |
-          hyperframes init smoke --example swiss-grid --non-interactive --resolution 720p
+          # NOT 720p: 0.8.136 accepts landscape | portrait | landscape-4k | portrait-4k
+          # | square | square-4k (aliases 1080p, 4k, uhd, and the square variants).
+          # 720p was accepted by 0.8.111 and is gone, so a pinned flag from an older
+          # install fails loudly here instead of silently rendering something else.
+          hyperframes init smoke --example swiss-grid --non-interactive --resolution landscape
           cd smoke
           # -w 1: each worker is its own Chrome. One is enough and cannot OOM the runner.
           hyperframes render -o ../out.mp4 -w 1 -q draft --quiet
