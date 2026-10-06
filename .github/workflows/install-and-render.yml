@@ -1,0 +1,106 @@
+name: install and render
+
+# Installs the current HyperFrames (and HyperFrames Studio) from npm on a
+# GitHub-hosted runner and renders a real MP4 with them, so the install and the
+# proof both happen away from the local machine.
+#
+# Why it exists: local was on 0.8.111 while upstream was on 0.8.136 and shipping
+# several releases a day. Pinning the install to CI means the version can be
+# moved forward by changing one input, and a render that no longer works shows up
+# as a failed run rather than as a broken video nobody noticed.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'npm version or dist-tag for hyperframes / @hyperframes/studio'
+        required: false
+        default: 'latest'
+  schedule:
+    # Weekly, so a new upstream release shows up as a run rather than as a surprise.
+    - cron: '0 7 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-and-render
+
+jobs:
+  install-and-render:
+    name: install the current HyperFrames and render
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: resolve which version this run installs
+        id: ver
+        run: |
+          WANT="${{ github.event.inputs.version || 'latest' }}"
+          echo "asked for  : $WANT"
+          HF=$(npm view "hyperframes@${WANT}" version)
+          ST=$(npm view "@hyperframes/studio@${WANT}" version)
+          echo "hyperframes: $HF"
+          echo "studio     : $ST"
+          echo "hf=$HF" >> "$GITHUB_OUTPUT"
+          echo "want=$WANT" >> "$GITHUB_OUTPUT"
+
+      - name: install them on the runner
+        run: npm install -g "hyperframes@${{ steps.ver.outputs.want }}" "@hyperframes/studio@${{ steps.ver.outputs.want }}"
+
+      # Mandatory before browser ensure. Without unzip, Chrome downloads and then
+      # fails to extract, and the error blames Chrome.
+      - name: unzip, which the Chrome extraction needs
+        run: sudo apt-get update -qq && sudo apt-get install -y unzip
+
+      - name: headless Chrome for the renderer
+        run: npx hyperframes browser ensure
+
+      - name: what got installed
+        run: |
+          echo "hyperframes $(hyperframes --version)"
+          node -e "console.log('studio', require('@hyperframes/studio/package.json').version)"
+
+      - name: doctor
+        run: hyperframes doctor
+
+      - name: scaffold a project and render an MP4 with it
+        env:
+          # Stops init reaching out to GitHub for the agent skills in CI.
+          HYPERFRAMES_SKIP_SKILLS: '1'
+        run: |
+          hyperframes init smoke --example swiss-grid --non-interactive --resolution 720p
+          cd smoke
+          # -w 1: each worker is its own Chrome. One is enough and cannot OOM the runner.
+          hyperframes render -o ../out.mp4 -w 1 -q draft --quiet
+
+      - name: prove it is a real video and not an empty file
+        run: |
+          ls -l out.mp4
+          ffprobe -v error -show_entries format=duration,size \
+            -show_entries stream=codec_name,width,height,nb_frames -of default=nw=1 out.mp4
+
+      - name: record the installed version in the run summary
+        run: |
+          {
+            echo "## HyperFrames install"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| hyperframes | \`${{ steps.ver.outputs.hf }}\` |"
+            echo "| @hyperframes/studio | \`${{ steps.ver.outputs.want }}\` |"
+            echo "| runner node | \`$(node --version)\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rendered-mp4-${{ steps.ver.outputs.hf }}
+          path: out.mp4
+          if-no-files-found: error
