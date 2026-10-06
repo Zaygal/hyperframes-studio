@@ -55,10 +55,19 @@ jobs:
       - name: install them on the runner
         run: npm install -g "hyperframes@${{ steps.ver.outputs.want }}" "@hyperframes/studio@${{ steps.ver.outputs.want }}"
 
-      # Mandatory before browser ensure. Without unzip, Chrome downloads and then
-      # fails to extract, and the error blames Chrome.
-      - name: unzip, which the Chrome extraction needs
-        run: sudo apt-get update -qq && sudo apt-get install -y unzip
+      # Both are dependencies the toolchain does not ship and GitHub runners do
+      # not preinstall. unzip must come before browser ensure, or Chrome downloads
+      # and then fails to extract and the error blames Chrome. ffmpeg/ffprobe are
+      # what actually encode and probe the video, and `doctor` will report them
+      # missing while still exiting 0 - so passing doctor is not proof a render
+      # works.
+      - name: install unzip and ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y unzip ffmpeg
+          unzip -v | head -1
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
 
       - name: headless Chrome for the renderer
         run: npx hyperframes browser ensure

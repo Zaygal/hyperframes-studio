@@ -48,6 +48,9 @@ installed from the same input and a mismatch is impossible.
 
 - **`unzip` is mandatory** before `browser ensure`, or the Chrome extraction fails
   with a misleading error.
+- **GitHub runners do not ship ffmpeg.** Neither does HyperFrames. Without it the
+  render dies with `FFmpeg not found` — and `doctor` still exits 0, so a green
+  doctor is not proof that a render will work.
 - **`-w 1`.** Each render worker launches its own Chrome (~256 MB). The default
   spawns several and dies on memory.
 - **Pass `HYPERFRAMES_SKIP_SKILLS=1` to `init`** in CI, or it reaches out to GitHub
